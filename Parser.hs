@@ -1,6 +1,7 @@
 module Parser (miniMLParser,
                miniMLParseFile) where
 
+import Control.Monad
 import Control.Applicative hiding ((<|>), many)
 import Text.Parsec hiding (token)
 import Text.Parsec.String
@@ -53,17 +54,23 @@ mlParenSubExpr = between (punctuation '(') (punctuation ')') inside
 mlConst = ( (MLInt . read) <$> token numericLiteral )
       <|> ( MLBool True  <$ keyword "true"  )
       <|> ( MLBool False <$ keyword "false" )
+      <?> "literal constant"    
   where numericLiteral = many1 digit <* notFollowedBy identChar
                     
-mlPrim = choice (map f [Add,Sub,Mul,Div,Fst,Snd,OpIf,OpFix])
+opList = [Add,Sub,Mul,Div,Fst,Snd,OpIf,OpFix]
+mlPrim = choice (map f opList) <?> "primitive operator name"
   where f x = MLPrim x <$ keyword (nameOp x)
 
 -- notFollowedBy used to implement the longest matching token rule
-mlIdent = token $ do
-  ident <- (:) <$> letter <*> many identChar
-  notFollowedBy identChar
-  pure $ MLIdent ident
+mlIdent = p <?> "identifier"
+  where p = token . try $ do
+              ident <- (:) <$> letter <*> many identChar
+              notFollowedBy identChar
+              guard (ident `notElem` keywordList)
+              pure $ MLIdent ident
 mlVar = MLVar <$> mlIdent
+
+keywordList = ["let", "in", "fun", "true", "false"] ++ map nameOp opList
 
 mlLet = do
   keyword "let"
