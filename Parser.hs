@@ -1,4 +1,5 @@
-module Parser (miniMLParser) where
+module Parser (miniMLParser,
+               miniMLParseFile) where
 
 import Control.Applicative hiding ((<|>), many)
 import Text.Parsec hiding (token)
@@ -12,6 +13,8 @@ import Ast
 miniMLParser :: Parser MLExpr
 miniMLParser = junk *> mlExpr -- remove spaces/comments at the start
                               -- (see next section)
+               
+miniMLParseFile = parseFromFile (miniMLParser <* eof)
 
 
 --- Lexical utilities (no need for a separate lexer) ---
@@ -56,7 +59,7 @@ mlPrim = choice (map f [Add,Sub,Mul,Div,Fst,Snd,OpIf,OpFix])
   where f x = MLPrim x <$ keyword (nameOp x)
 
 -- notFollowedBy used to implement the longest matching token rule
-mlIdent = do
+mlIdent = token $ do
   ident <- (:) <$> letter <*> many identChar
   notFollowedBy identChar
   pure $ MLIdent ident
