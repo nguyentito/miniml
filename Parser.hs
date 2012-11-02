@@ -1,52 +1,81 @@
-import Control.Applicative
-import Text.Parsec
+module Parser (miniMLParser) where
+
+import Control.Applicative hiding ((<|>), many)
+import Text.Parsec hiding (token)
 import Text.Parsec.String
 
 import Ast
 
+
+--- External interface ---
+
+miniMLParser :: Parser MLExpr
+miniMLParser = junk *> mlExpr -- remove spaces/comments at the start
+                              -- (see next section)
+
+
+--- Lexical utilities (no need for a separate lexer) ---
+
 junk = spaces -- this will eventually include comments as well
 token x = x <* junk -- parse all the non-significant characters following the token
                     -- and throw them away
+          
+identChar = alphaNum <|> char '_'
+keyword x = token . try $ string x *> notFollowedBy identChar
+punctuation = token . char
 
-mlExpr = mlConst <|> mlPair <|> mlLet <|> mlVar <|> mlPrim <|> mlFun <|> mlApp
 
-mlConst = ( (MLInt . read) <$> many1 digit )
-      <|> ( MLBool True  <$ string "true"  )
-          ( MLBool False <$ string "false" )
-                    
-mlPair = between (char '(') (char ')') $
-                 MLPair <$> mlExpr <*> (char ',' *> mlExpr)
+--- The actual language grammar (syntactic analysis) ---
 
-mlLet = do
-  (id, val) <- letBinding
-  body <- mlExpr
-  pure (MLLet { letVar = id, letValue = val, letBody = body })  
-  where
-    letBinding = between (string "let" *> many1 space)
-                         (many1 space *> string "in" *> many1 space) $
-                         (,) <$> mlVar <*> (equalSign *> mlExpr)
-    equalSign = spaces *> char '=' *> spaces
-      
--- note : en fait il n'y a pas forcément d'espace après "let ... in", 
---        il peut tout autant y avoir une parenthèse
+-- To avoid infinite left recursion,
+-- the <application> = <expr1> <expr2> production rule is treated using chainl1
 
-mlVar = (:) <$> letter <*> many (char '_' <|> alphaNum)
-
-mlFun = do
-  string "fun"
-  many1 space
-  id <- mlVar
-  spaces
-  string "->"
-  spaces
-  body <- mlExpr
-  pure (MLFun { funArg = id, funBody = body })
-
-mlPrim = choice (map f [Add,Sub,Mul,Div,Fst,Snd])
-  where f x = MLOp x <$ string (nameOp x)
+mlExpr = mlApp <|> mlNonApp
+  
+mlNonApp = mlConst <|> mlParenSubExpr <|> mlLet <|> mlFun <|> mlPrim <|> mlVar
 
 mlApp = undefined
 
-miniMLParser :: Parser MLExpr
-miniMLParser = mlExpr
+mlConst = ( (MLInt . read) <$> token numericLiteral )
+      <|> ( MLBool True  <$ keyword "true"  )
+      <|> ( MLBool False <$ keyword "false" )
+  where numericLiteral = many1 digit <* notFollowedBy identChar
+                    
+
+-- Something between parentheses can be either a pair or just a normal expression
+mlParenSubExpr = between (punctuation '(') (punctuation ')') inside
+  where inside = mlExpr >>= (\x -> pair x <|> single x)
+        single expr = pure expr
+        pair first = do
+          punctuation ','
+          second <- mlExpr
+          pure $ MLPair first second
+          
+-- Easy to parse constructs : prim, var, let, fun
+
+mlPrim = choice (map f [Add,Sub,Mul,Div,Fst,Snd,OpIf,OpFix])
+  where f x = MLPrim x <$ string (nameOp x)
+
+-- notFollowedBy used to implement the longest matching token rule
+mlIdent = do
+  ident <- (:) <$> letter <*> many identChar
+  notFollowedBy identChar
+  pure $ MLIdent ident
+mlVar = MLVar <$> mlIdent
+
+mlLet = do
+  keyword "let"
+  ident <- mlIdent
+  punctuation '='
+  val <- mlExpr
+  keyword "in"
+  body <- mlExpr
+  pure (MLLet { letVar = ident, letValue = val, letBody = body })  
+
+mlFun = do
+  keyword "fun"
+  ident <- mlIdent
+  token (string "->")
+  body <- mlExpr
+  pure (MLFun { funArg = ident, funBody = body })
 
