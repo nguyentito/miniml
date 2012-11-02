@@ -30,17 +30,11 @@ punctuation = token . char
 -- To avoid infinite left recursion,
 -- the <application> = <expr1> <expr2> production rule is treated using chainl1
 
-mlExpr = mlApp <|> mlNonApp
-  
-mlNonApp = mlConst <|> mlParenSubExpr <|> mlLet <|> mlFun <|> mlPrim <|> mlVar
+mlExpr = mlNonArg <|> mlApp
 
-mlApp = undefined
-
-mlConst = ( (MLInt . read) <$> token numericLiteral )
-      <|> ( MLBool True  <$ keyword "true"  )
-      <|> ( MLBool False <$ keyword "false" )
-  where numericLiteral = many1 digit <* notFollowedBy identChar
-                    
+mlApp = mlArgExpr `chainl1` (pure MLApp)
+mlNonArg = mlFun <|> mlLet 
+mlArgExpr = mlParenSubExpr <|> mlConst <|> mlPrim <|> mlVar
 
 -- Something between parentheses can be either a pair or just a normal expression
 mlParenSubExpr = between (punctuation '(') (punctuation ')') inside
@@ -51,10 +45,15 @@ mlParenSubExpr = between (punctuation '(') (punctuation ')') inside
           second <- mlExpr
           pure $ MLPair first second
           
--- Easy to parse constructs : prim, var, let, fun
+-- Easy to parse constructs : const, prim, var, let, fun
 
+mlConst = ( (MLInt . read) <$> token numericLiteral )
+      <|> ( MLBool True  <$ keyword "true"  )
+      <|> ( MLBool False <$ keyword "false" )
+  where numericLiteral = many1 digit <* notFollowedBy identChar
+                    
 mlPrim = choice (map f [Add,Sub,Mul,Div,Fst,Snd,OpIf,OpFix])
-  where f x = MLPrim x <$ string (nameOp x)
+  where f x = MLPrim x <$ keyword (nameOp x)
 
 -- notFollowedBy used to implement the longest matching token rule
 mlIdent = do

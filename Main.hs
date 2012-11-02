@@ -1,7 +1,12 @@
 module Main where
 
+import qualified Text.Parsec.String as TPS
+
+import Ast
+import Parser
+
 main = do
-  result <- Text.Parsec.parseFromFile miniML test.ml
+  result <- TPS.parseFromFile miniMLParser "test.ml"
   case result of
-    Left err -> putStrLn ("Erreur : " ++ err)
-    Right _ -> putStrLn "Succès"
+    Left err -> putStrLn "Erreur : " >> print err
+    Right expr -> print expr
