@@ -28,8 +28,14 @@ eval env e@(MLLet _)  = eval (Map.insert (letVar e) (letValue e) env) (letBody e
 eval env e@(MLFun _)  = VFun env (funArg e) (funBody e)
 
 eval env (MLApp funExpr argExpr) = case eval env funExpr of
-  VFun closure var body -> eval (Map.insert var (eval argExpr) closure) body
-  VPrim Add -> undefined
-
+    VFun closure var body -> eval (Map.insert var (eval env argExpr) closure) body
+    VPrim Add -> fst argVal + snd argVal
+    VPrim Sub -> fst argVal - snd argVal
+    VPrim Mul -> fst argVal * snd argVal
+    VPrim Div -> fst argVal / snd argVal
+    VPrim Fst -> fst argVal
+    VPrim Snd -> snd argVal
+  where argVal = eval env argExpr
+    
 mlEval :: MLExpr -> MLValue
 mlEval = eval (Map.Map.empty) 
